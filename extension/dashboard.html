@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ancestry Match Insights</title><link rel="stylesheet" href="dashboard.css"></head>
+<body><main>
+  <header><span class="eyebrow">ANCESTRY · LOCAL CHROME EXTENSION</span><h1>Ancestor names, in your notes.</h1>
+  <p>Follow Common Ancestor into ThruLines, read the names, return to your matches, and add a note. Any existing note means that match is skipped.</p></header>
+  <section>
+    <h2>1. Choose your Ancestry tab</h2>
+    <p>Open your <strong>match list, Shared Matches tab, or DNA Cluster</strong>. Use any filters you want. Close any open note editor.</p>
+    <div class="row"><select id="source" aria-label="Ancestry tab"></select><button id="refresh">Refresh tabs</button></div>
+    <p class="hint">Only rows with a Common Ancestor link are processed. Rows without that link or with an existing note are skipped automatically.</p>
+    <p class="hint">Keep this dashboard open. The selected Ancestry tab will navigate automatically; avoid using that tab during a run. While scanning, system sleep is prevented but the display may turn off normally.</p>
+  </section>
+  <section>
+    <h2>2. Save ancestor names as notes</h2>
+    <p>Click <strong>Start saving notes</strong> to read ancestors and save their names on Ancestry. It processes your selected cluster, or the current match-list page and every page after it. Matches with existing notes are skipped.</p>
+    <div class="row"><button id="all" class="primary">Start saving notes</button><button id="pause" disabled>Pause</button></div>
+    <p id="mode" class="mode-banner" role="status">Not running. Click Start saving notes to write notes to Ancestry.</p>
+    <p id="counts" class="hint">0 saved · 0 not saved yet · 0 skipped</p>
+    <p id="status" role="status" aria-live="polite">No notes have been saved in this run.</p>
+    <p class="hint">Current page only. Results are discarded when the crawler advances. No saved history or per-match approval.</p>
+    <div class="table-wrap"><table><thead><tr><th>Match</th><th>Ancestor names</th><th>Result</th></tr></thead><tbody id="results"></tbody></table></div>
+  </section>
+  <details><summary>Recovery and page captures</summary>
+    <div class="row"><button id="capture">Capture loaded page</button><button id="clear">Reset resume position</button></div>
+    <p>Pause takes effect after the current match operation. Closing the dashboard stops further matches. Only the resume position is stored. Reopen it and resume from the current list page. If interrupted in ThruLines, the extension returns to the saved list page first.</p>
+    <p>If a note editor is left open after an error, check it and close it before resuming. Existing notes are checked again, so an interrupted save is not blindly retried. Notes over 500 characters are skipped.</p>
+    <p>To report a changed layout, display that page in Ancestry, choose its tab above, and click Capture loaded page. The downloaded HTML includes names and notes; review it before sharing. Capture does not change any notes.</p>
+  </details>
+</main><script src="core.js"></script><script src="page.js"></script><script src="capture.js"></script><script src="runner.js"></script><script src="scan-power.js"></script><script src="dashboard.js"></script></body></html>

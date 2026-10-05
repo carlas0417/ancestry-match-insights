@@ -1,0 +1,17 @@
+:root { color-scheme: light; font: 15px/1.5 system-ui, sans-serif; color: #24332c; background: #f4f5ef; }
+body { margin: 0; } main { max-width: 1250px; margin: 40px auto; padding: 0 28px 60px; }
+header { margin-bottom: 30px; } h1 { font-size: 36px; letter-spacing: -1px; margin: 8px 0; } h2 { font-size: 20px; margin-top: 0; }
+.eyebrow { color: #55715b; font-size: 12px; font-weight: 700; letter-spacing: 2px; }
+section, details { border: 1px solid #dce1d5; background: white; padding: 24px; border-radius: 12px; margin: 18px 0; }
+p { max-width: 900px; } .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+button, select, input, textarea { font: inherit; } button, select { padding: 9px 14px; border: 1px solid #bbc9b8; background: #fff; border-radius: 6px; }
+button { cursor: pointer; } button.primary { background: #315b40; color: white; border-color: #315b40; } button:disabled { opacity: .45; cursor: default; }
+button:hover:enabled { filter: brightness(.94); } button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid #bf862e; }
+.check { display: block; margin: 15px 0; } .check input { margin-right: 8px; } .hint { color: #617065; font-size: 13px; }
+#status { background: #f0f4eb; padding: 12px; white-space: pre-wrap; border-radius: 6px; }
+.mode-banner { border-left: 5px solid #315b40; background: #edf3e9; padding: 14px; font-weight: 650; }
+.table-wrap { overflow-x: auto; } table { width: 100%; border-collapse: collapse; text-align: left; } th { font-size: 12px; text-transform: uppercase; color: #617065; }
+td, th { padding: 12px 9px; border-bottom: 1px solid #e5e8df; vertical-align: top; } td { max-width: 330px; white-space: pre-wrap; overflow-wrap: anywhere; }
+td textarea { width: 200px; min-height: 70px; padding: 8px; border: 1px solid #cbd5c7; border-radius: 5px; } a { color: #315b40; }
+summary { font-weight: 650; cursor: pointer; } #settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin: 20px 0; }
+#settings label { display: flex; flex-direction: column; gap: 5px; } #settings input { padding: 8px; border: 1px solid #cbd5c7; border-radius: 5px; }

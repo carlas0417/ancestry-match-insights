@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Ancestry Match Insights",
+  "version": "0.5.1",
+  "description": "Preview common ancestor names and add notes only to AncestryDNA matches without an existing note.",
+  "minimum_chrome_version": "109",
+  "permissions": ["storage", "scripting", "power"],
+  "host_permissions": ["https://www.ancestry.com/*", "https://ancestry.com/*"],
+  "action": { "default_title": "Open Ancestry Match Insights" },
+  "background": { "service_worker": "background.js" }
+}
