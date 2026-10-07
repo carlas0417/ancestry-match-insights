@@ -64,16 +64,18 @@ globalThis.AncestorRunner = class AncestorRunner {
           await this.commit(); previewed++;
           if (io.paused()) return 'Paused after returning to the match list. Resume to continue.';
           if ((mode === 'all' || mode === 'selected') && row.status === 'Ready') {
-            // Refresh server-backed list state before opening the editor.
-            await io.reload();
+            // The return navigation loaded the list. The save adapter checks
+            // both the current row and the editor before writing any text.
             const freshList = await io.list(list.url);
             if (freshList.editorOpen) throw new Error('An unrelated note editor is open. Close it before resuming.');
-            writing = true; row.status = 'Saving — not verified'; await this.commit();
+            writing = true; row.status = 'Saving…'; await this.commit();
             io.status(`Page ${list.page}: ${row.name} — saving note`);
             const result = await io.rpc('save', { ...identity, names: row.names, proposed: row.proposed });
             if (result.skipped) {
               row.status = 'Skipped — existing note'; row.selected = false;
             } else {
+              row.status = 'Checking saved note…'; await this.commit();
+              io.status(`Page ${list.page}: ${row.name} — checking saved note`);
               await io.reload(); await io.list(list.url);
               const verified = await io.rpc('row', identity);
               if (!verified.hasNote || verified.existing !== row.proposed) throw new Error('The reloaded note does not match. Check the note before resuming.');
@@ -82,7 +84,6 @@ globalThis.AncestorRunner = class AncestorRunner {
             await this.commit();
           }
           if (mode === 'one' && previewed >= 1) return 'Preview complete. The note has NOT been saved. Click Start saving notes to write it to Ancestry and continue.';
-          await io.delay();
         } catch (error) {
           row.status = writing ? 'Save unverified' : 'Failed'; row.error = error.message; row.selected = false;
           await this.commit(); throw error;
@@ -97,7 +98,7 @@ globalThis.AncestorRunner = class AncestorRunner {
       if (!next || next.page !== list.page + 1 || next.kit !== list.kit || AncestorCore.listContext(refreshed.nextURL) !== runContext) throw new Error('Next Page changed the DNA kit or filters. Stopped before leaving the selected list.');
       state.cursor = refreshed.nextURL; state.rows = []; await this.commit();
       io.status(`Page ${list.page} finished. Opening page ${next.page}…`);
-      await io.go(refreshed.nextURL); await io.delay();
+      await io.go(refreshed.nextURL);
     }
   }
 };

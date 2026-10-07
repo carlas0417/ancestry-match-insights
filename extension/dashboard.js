@@ -25,7 +25,7 @@ function render() {
     const cell = () => { const td = document.createElement('td'); tr.append(td); return td; };
     cell().textContent = row.name;
     cell().textContent = (row.names || []).join('; ');
-    const resultLabel = row.status === 'Ready' ? 'Not saved' : row.status === 'Saved' ? 'Saved on Ancestry' : row.status;
+    const resultLabel = row.status === 'Ready' ? 'Not saved' : row.status;
     cell().textContent = resultLabel + (row.error ? `\n${row.error}` : '');
     $('results').append(tr);
   }
@@ -62,14 +62,8 @@ async function rpc(tabId, action, payload = {}) {
   if (result.error) throw new Error(result.error);
   return result.value;
 }
-async function waitLoaded(tabId) {
-  await sleep(600);
-  for (let i = 0; i < 90; i++) {
-    const tab = await chrome.tabs.get(tabId);
-    if (tab.status === 'complete') { await sleep(1000); return; }
-    await sleep(400);
-  }
-  throw new Error('Ancestry did not finish loading.');
+async function waitLoaded(tabId, accept) {
+  await waitForAncestryLoad(() => chrome.tabs.get(tabId), sleep, accept);
 }
 async function go(tabId, url) {
   const target = new URL(url);
@@ -77,8 +71,10 @@ async function go(tabId, url) {
   await chrome.tabs.update(tabId, { url }); await waitLoaded(tabId);
 }
 async function list(tabId, expectedURL) {
-  // Two matching reads avoid capturing a partially rendered page.
+  // Stabilize the initial page enumeration. For an expected page, the page
+  // adapter checks readiness and identity; callers then target a known row.
   const first = await rpc(tabId, 'list', expectedURL ? { listURL: expectedURL } : {});
+  if (expectedURL) return first;
   await sleep(700);
   const second = await rpc(tabId, 'list', { listURL: first.url });
   if (first.matches.map(row => row.id).join() !== second.matches.map(row => row.id).join()) throw new Error('The matches are still loading. Wait and resume.');
@@ -87,7 +83,10 @@ async function list(tabId, expectedURL) {
 async function back(tabId, listURL) {
   const tab = await chrome.tabs.get(tabId);
   if (tab.url?.includes('/discoveryui-geneticfamily/thrulines/tree/')) {
-    await rpc(tabId, 'back'); await sleep(800); await waitLoaded(tabId);
+    await rpc(tabId, 'back');
+    // The page schedules its Back click after replying. Do not mistake the
+    // still-loaded ancestor page for the completed return navigation.
+    await waitLoaded(tabId, current => current.url !== tab.url);
   }
   const current = await chrome.tabs.get(tabId);
   const wanted = new URL(listURL), actual = new URL(current.url);
@@ -109,7 +108,7 @@ async function run(mode) {
     rpc: (action, payload) => rpc(tabId, action, payload),
     list: expected => list(tabId, expected), go: url => go(tabId, url), back: url => back(tabId, url),
     reload: async () => { await chrome.tabs.reload(tabId, { bypassCache: true }); await waitLoaded(tabId); },
-    persist, render, status, paused: () => paused, delay: () => sleep(500)
+    persist, render, status, paused: () => paused
   });
   status(await runner.run(mode));
 }

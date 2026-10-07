@@ -9,6 +9,34 @@
   const identity = { kit: 'kit-1', id: 'match-1', name: 'Alex Sample', listURL };
   const pageAt = url => new Function('location', `return (${ancestryPage.toString()});`)(new URL(url));
   const page = pageAt(listURL);
+  function navigationFixture(tabs, accept) {
+    let time = 0, reads = 0;
+    const waits = [];
+    return {
+      waits,
+      run: () => waitForAncestryLoad(async () => tabs[Math.min(reads++, tabs.length - 1)],
+        async ms => { waits.push(ms); time += ms; }, accept, () => time)
+    };
+  }
+  await test('Loaded navigation adds no fixed delay', async () => {
+    const f = navigationFixture([{ status: 'complete' }]);
+    await f.run(); equal(f.waits, []);
+  });
+  await test('Navigation waits for loading and pending redirects', async () => {
+    const f = navigationFixture([{ status: 'loading' }, { status: 'complete', pendingUrl: listURL }, { status: 'complete' }]);
+    await f.run(); equal(f.waits, [100, 100]);
+  });
+  await test('Scheduled Back cannot accept the old complete page', async () => {
+    const f = navigationFixture([{ status: 'complete', url: 'ancestor' }, { status: 'loading', url: listURL }, { status: 'complete', url: listURL }], tab => tab.url !== 'ancestor');
+    await f.run(); equal(f.waits, [100, 100]);
+  });
+  await test('Stuck navigation stops after a bounded wait', async () => {
+    const f = navigationFixture([{ status: 'loading' }]);
+    await rejects(f.run, /did not finish loading/); equal(f.waits.length, 360);
+  });
+  await test('Closed-tab errors propagate immediately', async () => {
+    await rejects(() => waitForAncestryLoad(async () => { throw new Error('Tab closed'); }, async () => { throw new Error('Unexpected wait'); }), /Tab closed/);
+  });
   function powerFixture() {
     const calls = [], lifecycle = new EventTarget();
     const lease = new ScanPower({ requestKeepAwake: level => calls.push(level), releaseKeepAwake: () => calls.push('release') }, lifecycle);
@@ -193,7 +221,7 @@
     const urlFor = n => listURL.replace('currentPage=1', `currentPage=${n}`);
     const match = n => ({ kit: 'kit-1', id: `match-${n}`, name: `Match ${n}`, url: '', ancestorURL: `https://www.ancestry.com/discoveryui-geneticfamily/thrulines/tree/for/kit-1?matchingSampleId=match-${n}`, hasNote: notes.has(`match-${n}`), existing: notes.get(`match-${n}`) || '' });
     const io = {
-      persist: async () => {}, render() {}, status() {}, delay: async () => {}, paused: () => stopped,
+      persist: async () => {}, render() {}, status() {}, paused: () => stopped,
       list: async () => ({ kit: 'kit-1', page: currentPage, url: urlFor(currentPage), nextURL: currentPage === 1 && secondPage ? urlFor(2) : null, matches: [match(currentPage)], editorOpen: false }),
       go: async url => { events.push(`go:${url.includes('/list?') ? 'page' : 'ancestor'}`); const parsed = C.listURL(url); if (parsed) currentPage = parsed.page; },
       back: async () => { events.push('back'); }, reload: async () => { events.push('reload'); },
@@ -231,6 +259,26 @@
     const saved = s.events.indexOf('save:match-1'), next = s.events.indexOf('go:page');
     equal(saved < next && s.events.slice(saved + 1, next).includes('row:match-1'), true); equal(s.events.filter(x => x === 'back').length, 2);
   });
+  await test('Each saved match uses only one reload, after Save', async () => {
+    const s = simulation({ secondPage: false }); await s.runner.run('all');
+    equal(s.events, ['row:match-1', 'go:ancestor', 'ancestors:match-1', 'back', 'save:match-1', 'reload', 'row:match-1']);
+    equal(s.state.rows[0].status, 'Saved');
+  });
+  await test('Existing note discovered by Save after returning is skipped without reload', async () => {
+    const s = simulation({ secondPage: false }), originalRPC = s.io.rpc;
+    s.io.back = async () => { s.notes.set('match-1', 'Added while reading ancestors'); };
+    s.io.rpc = async (action, payload) => action === 'save' ? { skipped: true } : originalRPC(action, payload);
+    await s.runner.run('all');
+    equal(s.notes.get('match-1'), 'Added while reading ancestors');
+    equal(s.state.rows[0].status.startsWith('Skipped'), true); equal(s.events.includes('reload'), false);
+  });
+  await test('Open draft after return stops before Save without refreshing it away', async () => {
+    const s = simulation({ secondPage: false }), originalList = s.io.list; let returned = false;
+    s.io.back = async () => { returned = true; };
+    s.io.list = async () => ({ ...await originalList(), editorOpen: returned });
+    await rejects(() => s.runner.run('all'), /unrelated note editor/);
+    equal(s.events.includes('save:match-1'), false); equal(s.events.includes('reload'), false);
+  });
   await test('New run automatically adopts selected kit instead of old checkpoint', async () => {
     const s = simulation({ secondPage: false }); s.state.kit = 'old-kit'; s.state.cursor = listURL.replace('kit-1', 'old-kit');
     s.state.rows = [{ kit: 'old-kit', id: 'old-match', names: ['Wrong Ancestor'], listURL: s.state.cursor }];
@@ -252,7 +300,7 @@
     const s = simulation({ verifyFails: true }); await rejects(() => s.runner.run('all'), /reloaded note/); equal(s.events.includes('go:page'), false); equal(s.state.rows[0].status, 'Save unverified');
   });
   await test('Resume skips a note saved before interruption', async () => {
-    const s = simulation({ existing: true, secondPage: false }); s.state.rows.push({ ...identity, names: ['John'], status: 'Saving — not verified' }); await s.runner.run('all'); equal(s.events.length, 0); equal(s.state.rows[0].status, 'Skipped — existing note');
+    const s = simulation({ existing: true, secondPage: false }); s.state.rows.push({ ...identity, names: ['John'], status: 'Saving…' }); await s.runner.run('all'); equal(s.events.length, 0); equal(s.state.rows[0].status, 'Skipped — existing note');
   });
   await test('Pause after ancestor visit restores list and does not save', async () => {
     const s = simulation(); s.io.back = async () => { s.events.push('back'); s.stop(); }; await s.runner.run('all'); equal(s.events.includes('back'), true); equal(s.events.some(x => x.startsWith('save:')), false); equal(s.state.rows[0].status, 'Ready');
