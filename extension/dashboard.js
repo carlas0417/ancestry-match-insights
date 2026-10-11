@@ -81,18 +81,11 @@ async function list(tabId, expectedURL) {
   return second;
 }
 async function back(tabId, listURL) {
-  const tab = await chrome.tabs.get(tabId);
-  if (tab.url?.includes('/discoveryui-geneticfamily/thrulines/tree/')) {
-    await rpc(tabId, 'back');
-    // The page schedules its Back click after replying. Do not mistake the
-    // still-loaded ancestor page for the completed return navigation.
-    await waitLoaded(tabId, current => current.url !== tab.url);
-  }
-  const current = await chrome.tabs.get(tabId);
-  const wanted = new URL(listURL), actual = new URL(current.url);
-  wanted.searchParams.sort(); actual.searchParams.sort();
-  if (wanted.href !== actual.href) await go(tabId, listURL);
-  await list(tabId, listURL);
+  await returnToAncestryList(listURL, {
+    tab: () => chrome.tabs.get(tabId), clickBack: () => rpc(tabId, 'back'),
+    wait: accept => waitLoaded(tabId, accept), go: url => go(tabId, url),
+    list: url => list(tabId, url)
+  });
 }
 async function run(mode) {
   const tabId = Number($('source').value); if (!tabId) throw new Error('Choose your Ancestry tab.');
@@ -107,7 +100,6 @@ async function run(mode) {
   const runner = new AncestorRunner(state, {
     rpc: (action, payload) => rpc(tabId, action, payload),
     list: expected => list(tabId, expected), go: url => go(tabId, url), back: url => back(tabId, url),
-    reload: async () => { await chrome.tabs.reload(tabId, { bypassCache: true }); await waitLoaded(tabId); },
     persist, render, status, paused: () => paused
   });
   status(await runner.run(mode));

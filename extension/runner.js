@@ -49,13 +49,21 @@ globalThis.AncestorRunner = class AncestorRunner {
           if (current.hasNote) { Object.assign(row, current, { status: 'Skipped — existing note', selected: false }); await this.commit(); continue; }
           if (!row.names.length) {
             io.status(`Page ${list.page}: ${row.name} — reading ThruLines`);
-            let away = false;
+            let away = false, readError = null;
             try {
               away = true; await io.go(row.ancestorURL);
               const result = await io.rpc('ancestors', { kit: row.kit, id: row.id, name: row.name });
               row.names = result.names;
+            } catch (error) {
+              readError = error; throw error;
             } finally {
-              if (away) await io.back(list.url);
+              if (away) {
+                try { await io.back(list.url); }
+                catch (returnError) {
+                  if (readError) throw new Error(`${readError.message} Return to the match list also failed: ${returnError.message}`);
+                  throw returnError;
+                }
+              }
             }
           }
           const note = AncestorCore.mergeNote('', row.names);
@@ -74,12 +82,7 @@ globalThis.AncestorRunner = class AncestorRunner {
             if (result.skipped) {
               row.status = 'Skipped — existing note'; row.selected = false;
             } else {
-              row.status = 'Checking saved note…'; await this.commit();
-              io.status(`Page ${list.page}: ${row.name} — checking saved note`);
-              await io.reload(); await io.list(list.url);
-              const verified = await io.rpc('row', identity);
-              if (!verified.hasNote || verified.existing !== row.proposed) throw new Error('The reloaded note does not match. Check the note before resuming.');
-              row.status = 'Saved'; row.existing = verified.existing; row.hasNote = true; row.selected = false;
+              row.status = 'Saved'; row.existing = row.proposed; row.hasNote = true; row.selected = false;
             }
             await this.commit();
           }

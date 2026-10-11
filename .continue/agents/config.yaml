@@ -1,0 +1,13 @@
+name: Danny's AI
+version: 1.0.0
+schema: v1
+
+models:
+  - name: Qwen Local Coder
+    provider: ollama
+    model: Qwen2.5-Coder:3b
+    apiBase: http://192.168.1.220:11434
+    roles:
+      - chat
+      - edit
+      - apply

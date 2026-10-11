@@ -42,6 +42,30 @@
     const lease = new ScanPower({ requestKeepAwake: level => calls.push(level), releaseKeepAwake: () => calls.push('release') }, lifecycle);
     return { calls, lifecycle, lease };
   }
+  await test('Missing ThruLines Back returns directly to the exact filtered list', async () => {
+    const calls = []; let url = 'https://www.ancestry.com/discoveryui-geneticfamily/thrulines/tree/for/kit-1';
+    await returnToAncestryList(listURL, {
+      tab: async () => ({ url }), clickBack: async () => { throw new Error('ThruLines Back button was not found.'); },
+      wait: async () => { throw new Error('Unexpected wait for missing button'); },
+      go: async target => { calls.push(target); url = target; }, list: async target => calls.push(target)
+    });
+    equal(calls, [listURL, listURL]);
+  });
+  await test('Working Back does not force an extra navigation', async () => {
+    let url = 'https://www.ancestry.com/discoveryui-geneticfamily/thrulines/tree/for/kit-1';
+    await returnToAncestryList(listURL, {
+      tab: async () => ({ url }), clickBack: async () => { url = listURL; },
+      wait: async accept => equal(accept({ url }), true),
+      go: async () => { throw new Error('Unexpected navigation'); }, list: async target => equal(target, listURL)
+    });
+  });
+  await test('Back recovery does not bypass access-check errors', async () => {
+    await rejects(() => returnToAncestryList(listURL, {
+      tab: async () => ({ url: 'https://www.ancestry.com/discoveryui-geneticfamily/thrulines/tree/for/kit-1' }),
+      clickBack: async () => { throw new Error('Sign-in or access check detected.'); },
+      go: async () => { throw new Error('Unexpected navigation'); }
+    }), /Sign-in or access check/);
+  });
   await test('Power request is idle until scanning and allows display sleep', async () => {
     const f = powerFixture(); equal(f.calls, []);
     const result = await f.lease.run(async () => { equal(f.calls, ['system']); return 'finished'; });
@@ -215,7 +239,7 @@
     await rejects(() => thru('ancestors', { kit: 'kit-1', id: 'match-1', name: 'Someone Else' }), /Cannot verify/);
   });
   // Controller simulations exercise ordering independently of the DOM adapter.
-  function simulation({ existing = false, verifyFails = false, secondPage = true } = {}) {
+  function simulation({ existing = false, secondPage = true } = {}) {
     const state = { rows: [], kit: null }, events = [], notes = new Map(); let currentPage = 1, stopped = false;
     if (existing) notes.set('match-1', 'Keep');
     const urlFor = n => listURL.replace('currentPage=1', `currentPage=${n}`);
@@ -229,13 +253,25 @@
         events.push(`${action}:${payload.id}`);
         if (action === 'row') return match(Number(payload.id.split('-')[1]));
         if (action === 'ancestors') return { names: ['John Smith'] };
-        if (action === 'save') { if (!verifyFails) notes.set(payload.id, payload.proposed); return { clicked: true }; }
+        if (action === 'save') { notes.set(payload.id, payload.proposed); return { clicked: true }; }
       }
     };
     return { state, events, notes, io, stop: () => { stopped = true; }, runner: new AncestorRunner(state, io) };
   }
   await test('Preview returns through Back without saving or advancing', async () => {
     const s = simulation(); await s.runner.run('one'); equal(s.state.rows[0].status, 'Ready'); equal(s.events.includes('back'), true); equal(s.events.some(x => x.startsWith('save:') || x === 'go:page'), false);
+  });
+  await test('Ancestor read failure returns to list without saving or losing the original error', async () => {
+    const s = simulation(), originalRPC = s.io.rpc;
+    s.io.rpc = async (action, payload) => {
+      if (action === 'ancestors') throw new Error('Tree failed to load');
+      return originalRPC(action, payload);
+    };
+    await rejects(() => s.runner.run('all'), /Tree failed to load/);
+    equal(s.events.includes('back'), true); equal(s.events.includes('save:match-1'), false);
+    equal(s.events.includes('go:page'), false);
+    s.io.back = async () => { throw new Error('Return failed'); };
+    await rejects(() => s.runner.run('all'), /Tree failed to load.*Return failed/);
   });
   await test('Shared-match workflow returns to exact shared list before saving', async () => {
     const s = simulation({ secondPage: false }), originalList = s.io.list;
@@ -254,14 +290,14 @@
     s.io.list = async () => { const list = await originalList(); list.matches[0].ancestorURL = null; return list; };
     await s.runner.run('all'); equal(s.events, []); equal(s.state.rows[0].status, 'No common ancestor');
   });
-  await test('Run finishes and verifies first page before visiting next page', async () => {
+  await test('Run finishes saving first page before visiting next page', async () => {
     const s = simulation(); await s.runner.run('all'); equal(s.state.rows.map(row => row.status), ['Saved']); equal(s.state.rows[0].id, 'match-2');
     const saved = s.events.indexOf('save:match-1'), next = s.events.indexOf('go:page');
-    equal(saved < next && s.events.slice(saved + 1, next).includes('row:match-1'), true); equal(s.events.filter(x => x === 'back').length, 2);
+    equal(saved < next, true); equal(s.events.filter(x => x === 'back').length, 2);
   });
-  await test('Each saved match uses only one reload, after Save', async () => {
+  await test('Each saved match continues without reloading or rereading the note', async () => {
     const s = simulation({ secondPage: false }); await s.runner.run('all');
-    equal(s.events, ['row:match-1', 'go:ancestor', 'ancestors:match-1', 'back', 'save:match-1', 'reload', 'row:match-1']);
+    equal(s.events, ['row:match-1', 'go:ancestor', 'ancestors:match-1', 'back', 'save:match-1']);
     equal(s.state.rows[0].status, 'Saved');
   });
   await test('Existing note discovered by Save after returning is skipped without reload', async () => {
@@ -296,8 +332,15 @@
     await rejects(() => s.runner.run('all'), /changed during the run/); equal(s.notes.has('match-2'), false);
   });
   await test('Existing-note match skipped without visiting ThruLines', async () => { const s = simulation({ existing: true, secondPage: false }); await s.runner.run('all'); equal(s.events.length, 0); equal(s.state.rows[0].status, 'Skipped — existing note'); });
-  await test('Failed verification stops before Next Page and remains unverified', async () => {
-    const s = simulation({ verifyFails: true }); await rejects(() => s.runner.run('all'), /reloaded note/); equal(s.events.includes('go:page'), false); equal(s.state.rows[0].status, 'Save unverified');
+  await test('Save adapter errors still stop before advancing', async () => {
+    const s = simulation(), originalRPC = s.io.rpc;
+    s.io.rpc = async (action, payload) => {
+      if (action === 'save') throw new Error('Save failed');
+      return originalRPC(action, payload);
+    };
+    await rejects(() => s.runner.run('all'), /Save failed/);
+    equal(s.events.includes('go:page'), false); equal(s.events.includes('reload'), false);
+    equal(s.state.rows[0].status, 'Save unverified');
   });
   await test('Resume skips a note saved before interruption', async () => {
     const s = simulation({ existing: true, secondPage: false }); s.state.rows.push({ ...identity, names: ['John'], status: 'Saving…' }); await s.runner.run('all'); equal(s.events.length, 0); equal(s.state.rows[0].status, 'Skipped — existing note');

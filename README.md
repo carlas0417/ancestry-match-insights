@@ -41,7 +41,7 @@ For each match on the current page:
 3. Read only tree nodes explicitly marked **Common ancestor**, using the displayed names. Other relatives and the DNA match's own card are excluded.
 4. Use **Back** to return to the exact match-list page and filters.
 5. Open that match's Add → Add/Edit Note control, and check again that the editor is empty.
-6. Save just the names, for example `John Smith; Mary Jones`, then reload and verify the saved note.
+6. Save just the names, for example `John Smith; Mary Jones`, wait for the editor to close and the note to appear on the page, then continue to the next match without reloading Ancestry.
 7. Once the page is finished, discard its results and follow **Next Page**.
 
 Long notes exceeding 500 characters are skipped without truncation. A navigation, identity, or save error stops the run. No note is appended to or overwritten.
